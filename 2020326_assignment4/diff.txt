@@ -1,0 +1,76 @@
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index f6b5779..bca79e6 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -369,7 +369,9 @@
+ 445	common	landlock_add_rule	sys_landlock_add_rule
+ 446	common	landlock_restrict_self	sys_landlock_restrict_self
+ 447	common	memfd_secret		sys_memfd_secret
+-
++448	common	kernel_2d_memcpy	sys_kernel_2d_memcpy
++449	common	writer			sys_writer
++450	common	reader			sys_reader
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+ # in x32 as compared to native x86_64.  These syscalls have numbers 512-547.
+diff --git a/kernel/sys.c b/kernel/sys.c
+index ef1a78f..606731b 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -200,6 +200,56 @@ static int set_one_prio(struct task_struct *p, int niceval, int error)
+ 	return error;
+ }
+ 
++SYSCALL_DEFINE4(kernel_2d_memcpy, float*, mat1, float*, mat2, int, row, int, col)
++{
++	float temp[row][col];
++    copy_from_user((void*)temp,(void __user*)mat1,sizeof(temp));
++    copy_to_user((void __user*)mat2,(void*)temp,sizeof(temp));
++	return 0;
++}
++
++char*queuer;
++int starter;
++int ender;
++int capacit;
++static DECLARE_RWSEM(semity);
++
++void enqueue(char*rand)
++{
++	down_write(&semity);
++	copy_from_user((void*)queuer,(void __user*)rand,sizeof(queuer));
++	up_write(&semity);
++}
++
++void dequeue(char*rande)
++{
++	down_read(&semity);
++	copy_to_user((void __user*)rande,(void*)queuer,sizeof(queuer));
++	up_read(&semity);
++}
++
++SYSCALL_DEFINE1(writer, char*, rand)
++{
++	starter=0;
++	ender=0;
++	capacit=8;
++	queuer=(char*)kmalloc(8,GFP_KERNEL);
++	if(queuer==NULL){
++		return -1;
++	}
++	enqueue(rand);
++	ender=8;
++	return 0;
++}
++
++SYSCALL_DEFINE1(reader, char*, rande)
++{
++	dequeue(rande);
++	ender=0;
++	kfree(queuer);
++	return 0;
++}
++
+ SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+ {
+ 	struct task_struct *g, *p;
